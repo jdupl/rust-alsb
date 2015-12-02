@@ -1,5 +1,4 @@
 extern crate image;
-extern crate bigwise;
 
 use std::path::Path;
 
