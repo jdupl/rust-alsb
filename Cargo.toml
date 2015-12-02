@@ -1,0 +1,11 @@
+[package]
+name = "rust-alsb"
+version = "0.1.0"
+authors = ["Justin Duplessis <drfoliberg@gmail.com>"]
+
+[dependencies]
+image = "*"
+
+[[bin]]
+path = "src/main.rs"
+name = "main"
