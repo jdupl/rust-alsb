@@ -1,25 +1,50 @@
 extern crate image;
+extern crate byteorder;
 
 use std::path::Path;
 use std::process::exit;
+use std::io::prelude::*;
+use std::fs::File;
+use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
+use std::io::Cursor;
 
 use image::*;
 
 fn main() {
-    let bytes = [12, 41, 123, 4, 75];
+    let mut buffer = Vec::new();
+    let mut f = File::open("to_hide.bin").unwrap();
+    f.read_to_end(&mut buffer).unwrap();
 
-    let mut img = image::open(&Path::new("test.jpg")).unwrap();
+    steg("test.jpg", buffer);
+    let mut buf = Vec::new();
+    unsteg("test.out.png", &mut buf);
+}
+
+fn steg(path: &str, bytes: Vec<u8>) {
+    let mut img = image::open(&Path::new(path)).unwrap();
     let (dim_x, dim_y) = img.dimensions();
 
-    if dim_x * dim_y * 3 / 8  <=  bytes.len() as u32 {
+    if dim_x * dim_y * 3 / 8 <= bytes.len() as u32 {
         println!("Image needs more pixels !");
         exit(1);
     }
 
     let mut img_buf = img.as_mut_rgb8().unwrap();
-    let mut it = ImageIterator::new(dim_x, dim_y);
+    let mut it = ImageIterator::new(img_buf);
 
-    for byte in bytes.iter() {
+    // Add header (payload size)
+    let mut size_bytes = vec![];
+    size_bytes.write_u32::<BigEndian>(dim_x * dim_y).unwrap();
+    hide_bytes(img_buf, &mut it, size_bytes);
+
+    // Add actual payload
+    // hide_bytes(img_buf, &mut it, bytes);
+
+    img_buf.save(&Path::new(&format!("{}.png", "test.out"))).unwrap();
+}
+
+fn hide_bytes(img_buf: &mut RgbImage, it: &mut ImageIterator, bytes: Vec<u8>) {
+    for byte in bytes {
         for bit in 0..7 {
             let bit_to_hide = ((byte >> bit) & 1) as u8;
 
@@ -28,14 +53,40 @@ fn main() {
 
             // println!("Hiding value {} in channel {}", bit_to_hide, next.channel);
             // println!("{:?}", pixel);
-            pixel.data[next.channel as usize] = pixel.data[next.channel as usize] & 0xFE | bit_to_hide;
+            let chan_index = next.channel as usize;
+            pixel.data[chan_index] = pixel.data[chan_index] & 0xFE | bit_to_hide;
             // println!("{:?}", pixel);
         }
     }
-
-    img_buf.save(&Path::new(&format!("{}.png", "test.out"))).unwrap();
 }
 
+fn unsteg(path: &str, bytes: &mut Vec<u8>) {
+    let img = image::open(&Path::new(path)).unwrap();
+    let img_buf = img.as_rgb8().unwrap();
+    let mut it = ImageIterator::new(img_buf);
+
+    // Get payload header (payload size)
+    let mut size_bytes = vec![];
+    println!("{:?}",size_bytes );
+    for byte in 0..3 {
+        for bit in 0..7 {
+            let bit_to_read = ((byte >> bit) & 1) as u8;
+
+            let next = it.next().unwrap();
+            let pixel = img_buf.get_pixel(next.x, next.y);
+
+            // println!("Hiding value {} in channel {}", bit_to_hide, next.channel);
+            // println!("{:?}", pixel);
+            let chan_index = next.channel as usize;
+            // pixel.data[chan_index] = pixel.data[chan_index] & 0xFE | bit_to_read;
+            // println!("{:?}", pixel);
+        }
+    }
+    // let size_bytes :Vec<ImageCoordinate> = it.take(4).collect();
+    let mut rdr = Cursor::new(size_bytes);
+    let size = rdr.read_u32::<BigEndian>().unwrap();
+    println!("{:?}", size);
+}
 
 #[derive(Debug)]
 struct ImageCoordinate {
@@ -45,6 +96,7 @@ struct ImageCoordinate {
 }
 
 struct ImageIterator {
+    img_buf: RgbImage,
     max_x: u32,
     max_y: u32,
     curr_x: u32,
@@ -53,10 +105,12 @@ struct ImageIterator {
 }
 
 impl ImageIterator {
-    pub fn new(max_x: u32, max_y: u32) -> Self {
+    pub fn new(img_buf: &RgbImage) -> Self {
+        let (dim_x, dim_y) = img_buf.dimensions();
         ImageIterator {
-            max_x: max_x,
-            max_y: max_y,
+            img_buf: img_buf.clone(),
+            max_x: dim_x,
+            max_y: dim_y,
             curr_x: 0,
             curr_y: 0,
             curr_channel: 0,

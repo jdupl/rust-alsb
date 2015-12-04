@@ -5,6 +5,7 @@ authors = ["Justin Duplessis <drfoliberg@gmail.com>"]
 
 [dependencies]
 image = "*"
+byteorder = "*"
 
 [[bin]]
 path = "src/main.rs"
