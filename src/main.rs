@@ -35,6 +35,7 @@ fn steg(path: &str, bytes: Vec<u8>) {
     // Add header (payload size)
     let mut size_bytes = vec![];
     size_bytes.write_u32::<BigEndian>(dim_x * dim_y).unwrap();
+    println!("{:?}", size_bytes);
     hide_bytes(img_buf, &mut it, size_bytes);
 
     // Add actual payload
@@ -45,17 +46,14 @@ fn steg(path: &str, bytes: Vec<u8>) {
 
 fn hide_bytes(img_buf: &mut RgbImage, it: &mut ImageIterator, bytes: Vec<u8>) {
     for byte in bytes {
-        for bit in 0..7 {
+        for bit in 0..8 {
             let bit_to_hide = ((byte >> bit) & 1) as u8;
 
             let next = it.next().unwrap();
             let mut pixel = img_buf.get_pixel_mut(next.x, next.y);
 
-            // println!("Hiding value {} in channel {}", bit_to_hide, next.channel);
-            // println!("{:?}", pixel);
             let chan_index = next.channel as usize;
             pixel.data[chan_index] = pixel.data[chan_index] & 0xFE | bit_to_hide;
-            // println!("{:?}", pixel);
         }
     }
 }
@@ -66,23 +64,22 @@ fn unsteg(path: &str, bytes: &mut Vec<u8>) {
     let mut it = ImageIterator::new(img_buf);
 
     // Get payload header (payload size)
-    let mut size_bytes = vec![];
-    println!("{:?}",size_bytes );
-    for byte in 0..3 {
-        for bit in 0..7 {
-            let bit_to_read = ((byte >> bit) & 1) as u8;
+    let mut size_bytes = vec![0, 0, 0, 0];
+    for byte_index in 0..4 {
+        let mut byte_building: u8 = 0;
 
+        for bit_index in 0..8 {
             let next = it.next().unwrap();
             let pixel = img_buf.get_pixel(next.x, next.y);
-
-            // println!("Hiding value {} in channel {}", bit_to_hide, next.channel);
-            // println!("{:?}", pixel);
             let chan_index = next.channel as usize;
-            // pixel.data[chan_index] = pixel.data[chan_index] & 0xFE | bit_to_read;
-            // println!("{:?}", pixel);
+
+            if pixel.data[chan_index] & (1 << 0) == 1 {
+                byte_building |= 1 << bit_index;
+            }
         }
+        size_bytes[byte_index] = byte_building;
     }
-    // let size_bytes :Vec<ImageCoordinate> = it.take(4).collect();
+    println!("{:?}",size_bytes);
     let mut rdr = Cursor::new(size_bytes);
     let size = rdr.read_u32::<BigEndian>().unwrap();
     println!("{:?}", size);
@@ -96,7 +93,6 @@ struct ImageCoordinate {
 }
 
 struct ImageIterator {
-    img_buf: RgbImage,
     max_x: u32,
     max_y: u32,
     curr_x: u32,
@@ -108,7 +104,6 @@ impl ImageIterator {
     pub fn new(img_buf: &RgbImage) -> Self {
         let (dim_x, dim_y) = img_buf.dimensions();
         ImageIterator {
-            img_buf: img_buf.clone(),
             max_x: dim_x,
             max_y: dim_y,
             curr_x: 0,
