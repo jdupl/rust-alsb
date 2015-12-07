@@ -17,8 +17,8 @@ fn main() {
                       .version("0.0.1")
                       .author("Justin Duplessis <jdupl@linux.com>")
                       .about("Simple stetanography with an Advanced Least Significant Bit \
-                              algorithm. This software should NOT be considered SECURE as it \
-                              is wrote for educational purposes.")
+                              algorithm. This software should NOT be considered SECURE as it is \
+                              wrote for educational purposes.")
                       .subcommand_required(true)
                       .subcommand(SubCommand::with_name("steg")
                                       .about("Hide some data in an image file. Outputs PNG.")
@@ -26,34 +26,36 @@ fn main() {
                                                .help("File to get public data from.")
                                                .required(true)
                                                .index(1))
-                                       .arg(Arg::with_name("to_hide")
-                                                .help("File to hide.")
-                                                .required(true)
-                                                .index(2))
+                                      .arg(Arg::with_name("to_hide")
+                                               .help("File to hide.")
+                                               .required(true)
+                                               .index(2))
                                       .arg(Arg::with_name("output")
-                                               .help("Output path of stegged file. Extension should be '.png'")
+                                               .help("Output path of stegged file. Extension \
+                                                      should be '.png'")
                                                .required(true)
                                                .index(3)))
                       .subcommand(SubCommand::with_name("unsteg")
-                                   .about("Reveal some data from a PNG file.")
-                                   .arg(Arg::with_name("input")
-                                            .help("Sets the input file to use.")
-                                            .required(true)
-                                            .index(1))
-                                   .arg(Arg::with_name("output")
-                                            .help("Sets the output file to use.")
-                                            .required(true)
-                                            .index(2)))
-                    .get_matches();
+                                      .about("Reveal some data from a PNG file.")
+                                      .arg(Arg::with_name("input")
+                                               .help("Sets the input file to use.")
+                                               .required(true)
+                                               .index(1))
+                                      .arg(Arg::with_name("output")
+                                               .help("Sets the output file to use.")
+                                               .required(true)
+                                               .index(2)))
+                      .get_matches();
     let mut bytes_read = Vec::new();
 
     match matches.subcommand() {
-        ("steg", Some(v))   => {steg(v.value_of("input").unwrap(),
-                                     v.value_of("output").unwrap(),
-                                     v.value_of("to_hide").unwrap())},
-        ("unsteg", Some(v)) => {unsteg(v.value_of("input").unwrap(),
-                                       &mut bytes_read)},
-        _                   => panic!("No subcommand provided by user !")
+        ("steg", Some(v)) => {
+            steg(v.value_of("input").unwrap(),
+                 v.value_of("output").unwrap(),
+                 v.value_of("to_hide").unwrap())
+        }
+        ("unsteg", Some(v)) => unsteg(v.value_of("input").unwrap(), &mut bytes_read),
+        _ => panic!("No subcommand provided by user !"),
     }
     println!("{:?}", bytes_read);
 }
