@@ -1,26 +1,69 @@
 extern crate image;
 extern crate byteorder;
+extern crate clap;
 
 use std::path::Path;
 use std::process::exit;
 use std::io::prelude::*;
 use std::fs::File;
-use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use std::io::Cursor;
+use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
+use clap::{Arg, App, SubCommand};
 
 use image::*;
 
 fn main() {
-    let mut bytes_to_hide = Vec::new();
-    let mut f = File::open("to_hide.bin").unwrap();
-    f.read_to_end(&mut bytes_to_hide).unwrap();
-
-    steg("test.jpg", "test.out.png", bytes_to_hide);
+    let matches = App::new("rust-alsb")
+                      .version("0.0.1")
+                      .author("Justin Duplessis <jdupl@linux.com>")
+                      .about("Simple stetanography with an Advanced Least Significant Bit \
+                              algorithm. This software should NOT be considered SECURE as it \
+                              is wrote for educational purposes.")
+                      .subcommand_required(true)
+                      .subcommand(SubCommand::with_name("steg")
+                                      .about("Hide some data in an image file. Outputs PNG.")
+                                      .arg(Arg::with_name("input")
+                                               .help("File to get public data from.")
+                                               .required(true)
+                                               .index(1))
+                                       .arg(Arg::with_name("to_hide")
+                                                .help("File to hide.")
+                                                .required(true)
+                                                .index(2))
+                                      .arg(Arg::with_name("output")
+                                               .help("Output path of stegged file. Extension should be '.png'")
+                                               .required(true)
+                                               .index(3)))
+                      .subcommand(SubCommand::with_name("unsteg")
+                                   .about("Reveal some data from a PNG file.")
+                                   .arg(Arg::with_name("input")
+                                            .help("Sets the input file to use.")
+                                            .required(true)
+                                            .index(1))
+                                   .arg(Arg::with_name("output")
+                                            .help("Sets the output file to use.")
+                                            .required(true)
+                                            .index(2)))
+                    .get_matches();
     let mut bytes_read = Vec::new();
-    unsteg("test.out.png", &mut bytes_read);
+
+    match matches.subcommand() {
+        ("steg", Some(v))   => {steg(v.value_of("input").unwrap(),
+                                     v.value_of("output").unwrap(),
+                                     v.value_of("to_hide").unwrap())},
+        ("unsteg", Some(v)) => {unsteg(v.value_of("input").unwrap(),
+                                       &mut bytes_read)},
+        _                   => panic!("No subcommand provided by user !")
+    }
+    println!("{:?}", bytes_read);
 }
 
-fn steg(path_input: &str, path_output: &str, bytes_to_hide: Vec<u8>) {
+fn steg(path_input: &str, path_output: &str, path_input_hide: &str) {
+    let mut bytes_to_hide = Vec::new();
+    let mut f = File::open(path_input_hide).unwrap();
+    f.read_to_end(&mut bytes_to_hide).unwrap();
+
+
     let mut img = image::open(&Path::new(path_input)).unwrap();
     let (dim_x, dim_y) = img.dimensions();
 
@@ -85,10 +128,18 @@ fn unsteg(path: &str, bytes: &mut Vec<u8>) {
 
     let mut rdr = Cursor::new(size_bytes);
     let size = rdr.read_u32::<BigEndian>().unwrap() as usize;
-    println!("Header contains size {:?}", size);
-    *bytes = vec![0; size];
+
+    let (dim_x, dim_y) = img.dimensions();
+
+    if dim_x * dim_y * 3 / 8 <= size as u32 {
+        println!("Input file has an invalid payload size in header.");
+        println!("Image does not have enough pixels !");
+        exit(2);
+    }
+
+    *bytes = vec![0; size]; // create output buffer
     read_bytes(img_buf, &mut it, bytes);
-    println!("read bytes {:?}", bytes);
+    println!("Read {} bytes from provided input", size);
 }
 
 #[derive(Debug)]
@@ -124,9 +175,9 @@ impl Iterator for ImageIterator {
 
     fn next(&mut self) -> Option<ImageCoordinate> {
         let coordinate = ImageCoordinate {
-            x : self.curr_x,
-            y : self.curr_y,
-            channel : self.curr_channel
+            x: self.curr_x,
+            y: self.curr_y,
+            channel: self.curr_channel,
         };
 
         self.curr_channel += 1;
