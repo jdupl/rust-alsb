@@ -63,7 +63,6 @@ fn steg(path_input: &str, path_output: &str, path_input_hide: &str) {
     let mut f = File::open(path_input_hide).unwrap();
     f.read_to_end(&mut bytes_to_hide).unwrap();
 
-
     let mut img = image::open(&Path::new(path_input)).unwrap();
     let (dim_x, dim_y) = img.dimensions();
 
@@ -83,7 +82,6 @@ fn steg(path_input: &str, path_output: &str, path_input_hide: &str) {
 
     // Add actual payload
     write_bytes(img_buf, &mut it, &bytes_to_hide);
-    println!("wrote {:?}", bytes_to_hide);
 
     img_buf.save(&Path::new(path_output)).unwrap();
 }
@@ -138,9 +136,10 @@ fn unsteg(path_input: &str, path_output: &str) {
 
     let mut bytes = vec![0; size]; // create output buffer
     read_bytes(img_buf, &mut it, &mut bytes);
+
     println!("Read {} bytes from provided input", size);
     println!("Saving unstegged bytes to {}", path_output);
-    let mut f = File::open(path_output).unwrap();
+    let mut f = File::create(path_output).unwrap();
     f.write_all(&mut bytes).unwrap();
 }
 
