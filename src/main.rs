@@ -46,7 +46,6 @@ fn main() {
                                                .required(true)
                                                .index(2)))
                       .get_matches();
-    let mut bytes_read = Vec::new();
 
     match matches.subcommand() {
         ("steg", Some(v)) => {
@@ -54,10 +53,9 @@ fn main() {
                  v.value_of("output").unwrap(),
                  v.value_of("to_hide").unwrap())
         }
-        ("unsteg", Some(v)) => unsteg(v.value_of("input").unwrap(), &mut bytes_read),
+        ("unsteg", Some(v)) => unsteg(v.value_of("input").unwrap(), v.value_of("output").unwrap()),
         _ => panic!("No subcommand provided by user !"),
     }
-    println!("{:?}", bytes_read);
 }
 
 fn steg(path_input: &str, path_output: &str, path_input_hide: &str) {
@@ -119,8 +117,8 @@ fn read_bytes(img_buf: &RgbImage, it: &mut ImageIterator, bytes: &mut Vec<u8>) {
     }
 }
 
-fn unsteg(path: &str, bytes: &mut Vec<u8>) {
-    let img = image::open(&Path::new(path)).unwrap();
+fn unsteg(path_input: &str, path_output: &str) {
+    let img = image::open(&Path::new(path_input)).unwrap();
     let img_buf = img.as_rgb8().unwrap();
     let mut it = ImageIterator::new(img_buf);
 
@@ -132,16 +130,18 @@ fn unsteg(path: &str, bytes: &mut Vec<u8>) {
     let size = rdr.read_u32::<BigEndian>().unwrap() as usize;
 
     let (dim_x, dim_y) = img.dimensions();
-
     if dim_x * dim_y * 3 / 8 <= size as u32 {
         println!("Input file has an invalid payload size in header.");
         println!("Image does not have enough pixels !");
         exit(2);
     }
 
-    *bytes = vec![0; size]; // create output buffer
-    read_bytes(img_buf, &mut it, bytes);
+    let mut bytes = vec![0; size]; // create output buffer
+    read_bytes(img_buf, &mut it, &mut bytes);
     println!("Read {} bytes from provided input", size);
+    println!("Saving unstegged bytes to {}", path_output);
+    let mut f = File::open(path_output).unwrap();
+    f.write_all(&mut bytes).unwrap();
 }
 
 #[derive(Debug)]
