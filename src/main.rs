@@ -3,12 +3,11 @@ extern crate byteorder;
 extern crate clap;
 
 use std::path::Path;
-use std::process::exit;
 use std::io::prelude::*;
 use std::fs::File;
 use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
-use clap::{Arg, App, SubCommand};
+use clap::{Arg, App, ArgMatches, SubCommand};
 
 use image::*;
 
@@ -46,29 +45,49 @@ fn main() {
                                                .required(true)
                                                .index(2)))
                       .get_matches();
+                      match wrap_user(matches) {
+                          Err(e) => println!("An error occured {:?}", e),
+                          _ => (),
+                      };
+}
 
+fn wrap_user(matches: ArgMatches) -> Result<(), Error>{
     match matches.subcommand() {
         ("steg", Some(v)) => {
-            steg(v.value_of("input").unwrap(),
+            steg_wrap(v.value_of("input").unwrap(),
                  v.value_of("output").unwrap(),
                  v.value_of("to_hide").unwrap())
         }
-        ("unsteg", Some(v)) => unsteg(v.value_of("input").unwrap(), v.value_of("output").unwrap()),
+        ("unsteg", Some(v)) => {
+            try!(unsteg(v.value_of("input").unwrap(), v.value_of("output").unwrap()))
+        }
         _ => panic!("No subcommand provided by user !"),
+    }
+    Ok(())
+}
+
+fn steg_wrap(path_input: &str, path_output: &str, path_input_hide: &str) {
+    let mut bytes_to_hide = Vec::new();
+    let mut fin = File::open(path_input_hide).unwrap();
+    fin.read_to_end(&mut bytes_to_hide).unwrap();
+
+    let mut img = image::open(&Path::new(path_input)).unwrap();
+
+    match steg(&mut bytes_to_hide, &mut img) {
+        Err(e) => println!("{:?}", e),
+        _ => {
+                let ref mut fout = File::create(&Path::new(path_output)).unwrap();
+                img.save(fout, ImageFormat::PNG).unwrap();
+                println!("Stegged sucessfully!" )
+        },
     }
 }
 
-fn steg(path_input: &str, path_output: &str, path_input_hide: &str) {
-    let mut bytes_to_hide = Vec::new();
-    let mut f = File::open(path_input_hide).unwrap();
-    f.read_to_end(&mut bytes_to_hide).unwrap();
-
-    let mut img = image::open(&Path::new(path_input)).unwrap();
+fn steg(bytes_to_hide: &mut Vec<u8>, img: &mut DynamicImage) -> Result<(), Error> {
     let (dim_x, dim_y) = img.dimensions();
 
     if dim_x * dim_y * 3 / 8 <= bytes_to_hide.len() as u32 {
-        println!("Image needs more pixels !");
-        exit(1);
+        return Err(Error::NotEnoughPixels);
     }
 
     let mut img_buf = img.as_mut_rgb8().unwrap();
@@ -77,13 +96,11 @@ fn steg(path_input: &str, path_output: &str, path_input_hide: &str) {
     // Add header (payload size)
     let mut size_bytes = vec![];
     size_bytes.write_u32::<BigEndian>(bytes_to_hide.len() as u32).unwrap();
-    println!("{:?}", size_bytes);
     write_bytes(img_buf, &mut it, &size_bytes);
 
     // Add actual payload
     write_bytes(img_buf, &mut it, &bytes_to_hide);
-
-    img_buf.save(&Path::new(path_output)).unwrap();
+    Ok(())
 }
 
 fn write_bytes(img_buf: &mut RgbImage, it: &mut ImageIterator, bytes_to_hide: &Vec<u8>) {
@@ -115,7 +132,7 @@ fn read_bytes(img_buf: &RgbImage, it: &mut ImageIterator, bytes: &mut Vec<u8>) {
     }
 }
 
-fn unsteg(path_input: &str, path_output: &str) {
+fn unsteg(path_input: &str, path_output: &str) -> Result<(), Error> {
     let img = image::open(&Path::new(path_input)).unwrap();
     let img_buf = img.as_rgb8().unwrap();
     let mut it = ImageIterator::new(img_buf);
@@ -131,7 +148,7 @@ fn unsteg(path_input: &str, path_output: &str) {
     if dim_x * dim_y * 3 / 8 <= size as u32 {
         println!("Input file has an invalid payload size in header.");
         println!("Image does not have enough pixels !");
-        exit(2);
+        return Err(Error::InvalidFormat);
     }
 
     let mut bytes = vec![0; size]; // create output buffer
@@ -141,6 +158,7 @@ fn unsteg(path_input: &str, path_output: &str) {
     println!("Saving unstegged bytes to {}", path_output);
     let mut f = File::create(path_output).unwrap();
     f.write_all(&mut bytes).unwrap();
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -197,4 +215,10 @@ impl Iterator for ImageIterator {
         }
         Some(coordinate)
     }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    NotEnoughPixels,
+    InvalidFormat,
 }
