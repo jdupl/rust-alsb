@@ -1,9 +1,11 @@
 # rust-alsb
-Rust implementation of an Advanced Least Significant Bit Steganography process.
+Rust implementation of an Advanced Least Significant Bit steganography process.
 
 Currently only hides data in image files. Will produce PNG files.
 
 **Please note** this software is for educational purposes. It is probably not secure as better algorithms are available.
+
+It is highly recommended to use encrypted data as the input.
 
 ## Least Significant Bit Steganography
 Hide bits in the least significant bits of a lossy file.

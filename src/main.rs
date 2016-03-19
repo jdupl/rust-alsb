@@ -7,7 +7,7 @@ use std::io::prelude::*;
 use std::fs::File;
 use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
-use clap::{Arg, App, ArgMatches, SubCommand};
+use clap::{Arg, App, ArgMatches, SubCommand, AppSettings};
 
 use image::*;
 
@@ -18,7 +18,7 @@ fn main() {
                       .about("Simple stetanography with an Advanced Least Significant Bit \
                               algorithm. This software should NOT be considered SECURE as it is \
                               wrote for educational purposes.")
-                      .subcommand_required(true)
+                      .setting(AppSettings::SubcommandRequired)
                       .subcommand(SubCommand::with_name("steg")
                                       .about("Hide some data in an image file. Outputs PNG.")
                                       .arg(Arg::with_name("input")
