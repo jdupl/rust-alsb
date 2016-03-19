@@ -89,7 +89,6 @@ fn steg(bytes_to_hide: &mut Vec<u8>, img: &mut DynamicImage) -> Result<(), Error
     if dim_x * dim_y * 3 / 8 <= bytes_to_hide.len() as u32 {
         return Err(Error::NotEnoughPixels);
     }
-
     let mut img_buf = img.as_mut_rgb8().unwrap();
     let mut it = ImageIterator::new(img_buf);
 
@@ -221,4 +220,35 @@ impl Iterator for ImageIterator {
 pub enum Error {
     NotEnoughPixels,
     InvalidFormat,
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::steg_wrap;
+    use image::*;
+    use std::path::Path;
+    use std::fs::File;
+    use std::io::Write;
+
+    #[test]
+    fn test() {
+        // Generate test input image
+        let img_in = ImageBuffer::from_fn(512, 512, |x, y| {
+            if x % 2 == 0 || y % 2 == 0 {
+                Rgb([0u8, 0u8, 0u8])
+            } else {
+                Rgb([255u8, 255u8, 255u8])
+            }
+        });
+        let _ = img_in.save(&Path::new("test_in.png")).unwrap();
+
+        // Generate secret to hide
+        let secret_bytes: [u8; 4] = [1, 2, 3, 4];
+        let mut secret = File::create(&Path::new("secret.bin")).unwrap();
+        secret.write_all(&secret_bytes).unwrap();
+
+
+        steg_wrap("test_in.png", "test_out.png", "secret.bin");
+    }
 }
