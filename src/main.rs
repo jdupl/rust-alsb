@@ -1,6 +1,8 @@
 extern crate image;
 extern crate byteorder;
 extern crate clap;
+extern crate rand;
+
 
 use std::path::Path;
 use std::io::prelude::*;
@@ -83,7 +85,7 @@ fn steg_wrap(path_input: &str, path_output: &str, path_input_hide: &str) {
     }
 }
 
-fn steg(bytes_to_hide: &mut Vec<u8>, img: &mut DynamicImage) -> Result<(), Error> {
+fn steg(bytes_to_hide: &Vec<u8>, img: &mut DynamicImage) -> Result<(), Error> {
     let (dim_x, dim_y) = img.dimensions();
 
     if dim_x * dim_y * 3 / 8 <= bytes_to_hide.len() as u32 {
@@ -131,8 +133,7 @@ fn read_bytes(img_buf: &RgbImage, it: &mut ImageIterator, bytes: &mut Vec<u8>) {
     }
 }
 
-fn unsteg(path_input: &str, path_output: &str) -> Result<(), Error> {
-    let img = image::open(&Path::new(path_input)).unwrap();
+fn unsteg_bytes(img: DynamicImage) -> Vec<u8> {
     let img_buf = img.as_rgb8().unwrap();
     let mut it = ImageIterator::new(img_buf);
 
@@ -147,13 +148,21 @@ fn unsteg(path_input: &str, path_output: &str) -> Result<(), Error> {
     if dim_x * dim_y * 3 / 8 <= size as u32 {
         println!("Input file has an invalid payload size in header.");
         println!("Image does not have enough pixels !");
-        return Err(Error::InvalidFormat);
+        // return Err(Error::InvalidFormat);
+        panic!("") // TODO FIXME
     }
 
     let mut bytes = vec![0; size]; // create output buffer
     read_bytes(img_buf, &mut it, &mut bytes);
-
     println!("Read {} bytes from provided input", size);
+    return bytes;
+}
+
+fn unsteg(path_input: &str, path_output: &str) -> Result<(), Error> {
+    let img = image::open(&Path::new(path_input)).unwrap();
+    // let img_buf = img.as_rgb8().unwrap();
+
+    let mut bytes = unsteg_bytes(img);
     println!("Saving unstegged bytes to {}", path_output);
     let mut f = File::create(path_output).unwrap();
     f.write_all(&mut bytes).unwrap();
@@ -222,17 +231,17 @@ pub enum Error {
     InvalidFormat,
 }
 
-
 #[cfg(test)]
 mod test {
-    use super::steg_wrap;
+    use super::{steg_wrap, steg, unsteg_bytes};
     use image::*;
     use std::path::Path;
     use std::fs::File;
     use std::io::Write;
+    use rand::{thread_rng, Rng};
 
     #[test]
-    fn test() {
+    fn test_unwrapped_steg() {
         // Generate test input image
         let img_in = ImageBuffer::from_fn(512, 512, |x, y| {
             if x % 2 == 0 || y % 2 == 0 {
@@ -241,14 +250,16 @@ mod test {
                 Rgb([255u8, 255u8, 255u8])
             }
         });
+        // TODO convert buffer to DynamicImage without IO ?
         let _ = img_in.save(&Path::new("test_in.png")).unwrap();
+        let mut img = open(&Path::new("test_in.png")).unwrap();
 
-        // Generate secret to hide
-        let secret_bytes: [u8; 4] = [1, 2, 3, 4];
-        let mut secret = File::create(&Path::new("secret.bin")).unwrap();
-        secret.write_all(&secret_bytes).unwrap();
+        let mut secret_bytes = [0u8; 128];
+        thread_rng().fill_bytes(&mut secret_bytes);
 
+        steg(&secret_bytes.to_vec(), &mut img);
+        let found_bytes = unsteg_bytes(img);
 
-        steg_wrap("test_in.png", "test_out.png", "secret.bin");
+        assert!(found_bytes == secret_bytes.to_vec());
     }
 }
