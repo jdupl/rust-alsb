@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::Cursor;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use clap::{Arg, App, ArgMatches, SubCommand, AppSettings};
-
+use rand::{thread_rng, Rng};
 use image::*;
 
 fn main() {
@@ -94,14 +94,23 @@ fn steg(bytes_to_hide: &Vec<u8>, img: &mut DynamicImage) -> Result<(), Error> {
     let mut img_buf = img.as_mut_rgb8().unwrap();
     let mut it = ImageIterator::new(img_buf);
 
+    let mut random_bytes = [0u8; 128]; // TODO Get random size
+    thread_rng().fill_bytes(&mut random_bytes);
+
+    write_payload_with_header(&random_bytes.to_vec(), img_buf, &mut it);
+    write_payload_with_header(&bytes_to_hide, img_buf, &mut it);
+
+    Ok(())
+}
+
+fn write_payload_with_header(payload: &Vec<u8>, img_buf: &mut RgbImage, it: &mut ImageIterator) {
     // Add header (payload size)
     let mut size_bytes = vec![];
-    size_bytes.write_u32::<BigEndian>(bytes_to_hide.len() as u32).unwrap();
-    write_bytes(img_buf, &mut it, &size_bytes);
+    size_bytes.write_u32::<BigEndian>(payload.len() as u32).unwrap();
+    write_bytes(img_buf, it, &size_bytes);
 
     // Add actual payload
-    write_bytes(img_buf, &mut it, &bytes_to_hide);
-    Ok(())
+    write_bytes(img_buf, it, &payload);
 }
 
 fn write_bytes(img_buf: &mut RgbImage, it: &mut ImageIterator, bytes_to_hide: &Vec<u8>) {
@@ -133,29 +142,37 @@ fn read_bytes(img_buf: &RgbImage, it: &mut ImageIterator, bytes: &mut Vec<u8>) {
     }
 }
 
-fn unsteg_bytes(img: DynamicImage) -> Vec<u8> {
-    let img_buf = img.as_rgb8().unwrap();
-    let mut it = ImageIterator::new(img_buf);
-
+fn get_next_payload(img_buf: &RgbImage, it: &mut ImageIterator) -> Vec<u8> {
     // Get payload header (payload size)
     let mut size_bytes = vec![0; 4];
-    read_bytes(img_buf, &mut it, &mut size_bytes);
+    read_bytes(img_buf, it, &mut size_bytes);
 
     let mut rdr = Cursor::new(size_bytes);
     let size = rdr.read_u32::<BigEndian>().unwrap() as usize;
 
-    let (dim_x, dim_y) = img.dimensions();
-    if dim_x * dim_y * 3 / 8 <= size as u32 {
-        println!("Input file has an invalid payload size in header.");
-        println!("Image does not have enough pixels !");
-        // return Err(Error::InvalidFormat);
-        panic!("") // TODO FIXME
-    }
+    // let (dim_x, dim_y) = img.dimensions();
+    // if dim_x * dim_y * 3 / 8 <= size as u32 {
+    //     println!("Input file has an invalid payload size in header.");
+    //     println!("Image does not have enough pixels !");
+    //     // return Err(Error::InvalidFormat);
+    //     panic!("") // TODO FIXME
+    // }
 
     let mut bytes = vec![0; size]; // create output buffer
-    read_bytes(img_buf, &mut it, &mut bytes);
-    println!("Read {} bytes from provided input", size);
+    read_bytes(img_buf, it, &mut bytes);
+
     return bytes;
+}
+
+fn unsteg_bytes(img: DynamicImage) -> Vec<u8> {
+    let img_buf = img.as_rgb8().unwrap();
+    let mut it = ImageIterator::new(img_buf);
+
+    // Get random data
+    let xored: Vec<u8> = get_next_payload(img_buf, &mut it);
+    // TODO unxor
+
+    return get_next_payload(img_buf, &mut it);
 }
 
 fn unsteg(path_input: &str, path_output: &str) -> Result<(), Error> {
