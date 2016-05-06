@@ -8,6 +8,8 @@ use std::path::Path;
 use std::io::prelude::*;
 use std::fs::File;
 use std::io::Cursor;
+use std::fmt;
+use std::error;
 use byteorder::{BigEndian, WriteBytesExt, ReadBytesExt};
 use clap::{Arg, App, ArgMatches, SubCommand, AppSettings};
 use rand::{thread_rng, Rng};
@@ -47,18 +49,17 @@ fn main() {
                                                .required(true)
                                                .index(2)))
                       .get_matches();
-                      match wrap_user(matches) {
-                          Err(e) => println!("An error occured {:?}", e),
-                          _ => (),
-                      };
+                    let _ = wrap_user(matches);
+
+
 }
 
-fn wrap_user(matches: ArgMatches) -> Result<(), Error>{
+fn wrap_user(matches: ArgMatches) -> Result<(), Error> {
     match matches.subcommand() {
         ("steg", Some(v)) => {
-            steg_wrap(v.value_of("input").unwrap(),
+            try!(steg_wrap(v.value_of("input").unwrap(),
                  v.value_of("output").unwrap(),
-                 v.value_of("to_hide").unwrap())
+                 v.value_of("to_hide").unwrap()))
         }
         ("unsteg", Some(v)) => {
             try!(unsteg(v.value_of("input").unwrap(), v.value_of("output").unwrap()))
@@ -68,21 +69,17 @@ fn wrap_user(matches: ArgMatches) -> Result<(), Error>{
     Ok(())
 }
 
-fn steg_wrap(path_input: &str, path_output: &str, path_input_hide: &str) {
+fn steg_wrap(path_input: &str, path_output: &str, path_input_hide: &str) -> Result<(), Error> {
     let mut bytes_to_hide = Vec::new();
     let mut fin = File::open(path_input_hide).unwrap();
-    fin.read_to_end(&mut bytes_to_hide).unwrap();
+    let _ = fin.read_to_end(&mut bytes_to_hide);
 
     let mut img = image::open(&Path::new(path_input)).unwrap();
+    try!(steg(&mut bytes_to_hide, &mut img));
 
-    match steg(&mut bytes_to_hide, &mut img) {
-        Err(e) => println!("{:?}", e),
-        _ => {
-                let ref mut fout = File::create(&Path::new(path_output)).unwrap();
-                img.save(fout, ImageFormat::PNG).unwrap();
-                println!("Stegged sucessfully!" )
-        },
-    }
+    let ref mut fout = File::create(&Path::new(path_output)).unwrap();
+    img.save(fout, ImageFormat::PNG).unwrap();
+    Ok(())
 }
 
 fn steg(bytes_to_hide: &Vec<u8>, img: &mut DynamicImage) -> Result<(), Error> {
@@ -248,13 +245,36 @@ pub enum Error {
     InvalidFormat,
 }
 
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::NotEnoughPixels  => write!(f, "Not enought pixels to hide message."),
+            Error::InvalidFormat  => write!(f, "Invalid image format."),
+        }
+    }
+}
+
+impl error::Error for Error {
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            Error::NotEnoughPixels  => None,
+            Error::InvalidFormat  => None,
+        }
+    }
+
+    fn description(&self) -> &str {
+        match *self {
+            Error::NotEnoughPixels  => "Input image error",
+            Error::InvalidFormat  => "Input image error",
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use super::{steg_wrap, steg, unsteg_bytes};
+    use super::{steg, unsteg_bytes};
     use image::*;
     use std::path::Path;
-    use std::fs::File;
-    use std::io::Write;
     use rand::{thread_rng, Rng};
 
     #[test]
@@ -274,7 +294,31 @@ mod test {
         let mut secret_bytes = [0u8; 128];
         thread_rng().fill_bytes(&mut secret_bytes);
 
-        steg(&secret_bytes.to_vec(), &mut img);
+        steg(&secret_bytes.to_vec(), &mut img).unwrap();
+        let found_bytes = unsteg_bytes(img);
+
+        assert!(found_bytes == secret_bytes.to_vec());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_not_enough_pixels() {
+        // Generate test input image
+        let img_in = ImageBuffer::from_fn(12, 12, |x, y| {
+            if x % 2 == 0 || y % 2 == 0 {
+                Rgb([0u8, 0u8, 0u8])
+            } else {
+                Rgb([255u8, 255u8, 255u8])
+            }
+        });
+        // TODO convert buffer to DynamicImage without IO ?
+        let _ = img_in.save(&Path::new("test_in.png")).unwrap();
+        let mut img = open(&Path::new("test_in.png")).unwrap();
+
+        let mut secret_bytes = [0u8; 128];
+        thread_rng().fill_bytes(&mut secret_bytes);
+
+        steg(&secret_bytes.to_vec(), &mut img).unwrap();
         let found_bytes = unsteg_bytes(img);
 
         assert!(found_bytes == secret_bytes.to_vec());
